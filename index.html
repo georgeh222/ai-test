@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Team Stat Predictor</title>
+<style>
+body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding:20px; }
+#result { margin-top: 20px; }
+</style>
+</head>
+<body>
+<h1>Team Stat Predictor</h1>
+<p>Enter a football team's name to see predicted stats for their next game.</p>
+<input type="text" id="teamInput" placeholder="Enter team name" />
+<button id="predictBtn">Predict</button>
+<div id="result"></div>
+<script>
+// note: you need to provide your own API key for the sports data provider
+const API_KEY = 'YOUR_API_KEY_HERE';
+async function fetchTeamStats(teamName) {
+  const response = await fetch(`https://api.football-data.org/v4/teams?name=${encodeURIComponent(teamName)}`, {
+    headers: { 'X-Auth-Token': API_KEY }
+  });
+  const data = await response.json();
+  return data;
+}
+async function fetchTeamMatches(teamId) {
+  const today = new Date();
+  const pastDate = new Date();
+  pastDate.setDate(today.getDate() - 30);
+  const from = pastDate.toISOString().split('T')[0];
+  const to = today.toISOString().split('T')[0];
+  const response = await fetch(`https://api.football-data.org/v4/teams/${teamId}/matches?dateFrom=${from}&dateTo=${to}`, {
+    headers: { 'X-Auth-Token': API_KEY }
+  });
+  const data = await response.json();
+  return data;
+}
+function predictStats(matches) {
+  if (!matches || matches.length === 0) {
+    return null;
+  }
+  let totalGoalsFor = 0;
+  let totalGoalsAgainst = 0;
+  matches.forEach(match => {
+    const score = match.score.fullTime;
+    // Determine if the selected team was home or away
+    if (match.homeTeam.id === selectedTeamId) {
+      totalGoalsFor += score.home ?? 0;
+      totalGoalsAgainst += score.away ?? 0;
+    } else {
+      totalGoalsFor += score.away ?? 0;
+      totalGoalsAgainst += score.home ?? 0;
+    }
+  });
+  const avgGoalsFor = (totalGoalsFor / matches.length).toFixed(2);
+  const avgGoalsAgainst = (totalGoalsAgainst / matches.length).toFixed(2);
+  return { avgGoalsFor, avgGoalsAgainst };
+}
+let selectedTeamId = null;
+document.getElementById('predictBtn').addEventListener('click', async () => {
+  const teamName = document.getElementById('teamInput').value.trim();
+  const resultDiv = document.getElementById('result');
+  if (!teamName) {
+    resultDiv.textContent = 'Please enter a team name.';
+    return;
+  }
+  resultDiv.textContent = 'Loading...';
+  try {
+    const teamData = await fetchTeamStats(teamName);
+    if (!teamData.teams || teamData.teams.length === 0) {
+      resultDiv.textContent = 'Team not found.';
+      return;
+    }
+    const team = teamData.teams[0];
+    selectedTeamId = team.id;
+    const matchesData = await fetchTeamMatches(selectedTeamId);
+    const prediction = predictStats(matchesData.matches);
+    if (prediction) {
+      resultDiv.innerHTML = `
+        <h2>Predicted stats for next game</h2>
+        <p><strong>Average goals scored per game:</strong> ${prediction.avgGoalsFor}</p>
+        <p><strong>Average goals conceded per game:</strong> ${prediction.avgGoalsAgainst}</p>
+        <p>Note: Stats are based on the last 30 days of games.</p>
+      `;
+    } else {
+      resultDiv.textContent = 'Not enough data to make a prediction.';
+    }
+  } catch (err) {
+    console.error(err);
+    resultDiv.textContent = 'Error fetching data.';
+  }
+});
+</script>
+</body>
+</html>
